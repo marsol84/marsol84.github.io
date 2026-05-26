@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenda - Sincronizada con Firestore</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 0.9em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .form-group input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group button {
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+
+        .form-group button:hover {
+            transform: translateY(-2px);
+        }
+
+        .form-group button:active {
+            transform: translateY(0);
+        }
+
+        .form-group button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .agenda-list {
+            list-style: none;
+        }
+
+        .agenda-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .agenda-item.removing {
+            animation: slideOut 0.3s ease;
+        }
+
+        @keyframes slideOut {
+            to {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+        }
+
+        .contact-info {
+            flex: 1;
+        }
+
+        .contact-name {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .contact-date {
+            font-size: 0.85em;
+            color: #888;
+        }
+
+        .delete-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .delete-btn:hover {
+            background: #ff5252;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .status {
+            text-align: center;
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .status.connected {
+            color: #4caf50;
+        }
+
+        .status.connected::before {
+            content: "● ";
+        }
+
+        .loader {
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            background: currentColor;
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Mi Agenda</h1>
+            <p>Sincronizada con Firestore</p>
+        </div>
+
+        <div class="content">
+            <div class="form-group">
+                <input 
+                    type="text" 
+                    id="nombreInput" 
+                    placeholder="Ingresa un nombre..." 
+                    autocomplete="off"
+                >
+                <button id="agregarBtn" onclick="agregarContacto()">Agregar</button>
+            </div>
+
+            <ul class="agenda-list" id="agendaList"></ul>
+
+            <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">📝</div>
+                <p>Tu agenda está vacía. ¡Agrega tu primer contacto!</p>
+            </div>
+
+            <div class="status" id="status">
+                Conectando a Firestore<span class="loader"></span>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Importar funciones de Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection, 
+            addDoc, 
+            deleteDoc, 
+            doc, 
+            onSnapshot,
+            query,
+            orderBy,
+            serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+
+        // Configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyBR_gHDL785OT8EVvL8uY9rurgZxtbeE3M",
+            authDomain: "clientes-db-f201c.firebaseapp.com",
+            projectId: "clientes-db-f201c",
+            storageBucket: "clientes-db-f201c.firebasestorage.app",
+            messagingSenderId: "404216365006",
+            appId: "1:404216365006:web:a42a9c2c0796a098f5759f",
+            measurementId: "G-0945VW46BG"
+        };
+
+        // Inicializar Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const agendaCollection = collection(db, "agenda");
+
+        // Variables globales
+        let contactos = [];
+        let escuchador = null;
+
+        // Elementos del DOM
+        const nombreInput = document.getElementById("nombreInput");
+        const agregarBtn = document.getElementById("agregarBtn");
+        const agendaList = document.getElementById("agendaList");
+        const emptyState = document.getElementById("emptyState");
+        const statusElement = document.getElementById("status");
+
+        // Función para actualizar estado de conexión
+        function actualizarEstado(conectado) {
+            if (conectado) {
+                statusElement.className = "status connected";
+                statusElement.textContent = "✓ Conectado a Firestore";
+            } else {
+                statusElement.className = "status";
+                statusElement.innerHTML = 'Conectando a Firestore<span class="loader"></span>';
+            }
+        }
+
+        // Función para cargar y escuchar contactos
+        function cargarContactos() {
+            try {
+                const q = query(agendaCollection, orderBy("fecha", "desc"));
+                
+                escuchador = onSnapshot(
+                    q,
+                    (snapshot) => {
+                        contactos = [];
+                        snapshot.forEach((doc) => {
+                            contactos.push({
+                                id: doc.id,
+                                nombre: doc.data().nombre,
+                                fecha: doc.data().fecha?.toDate() || new Date()
+                            });
+                        });
+                        mostrarContactos();
+                        actualizarEstado(true);
+                    },
+                    (error) => {
+                        console.error("Error al cargar contactos:", error);
+                        actualizarEstado(false);
+                    }
+                );
+            } catch (error) {
+                console.error("Error al configurar escucha:", error);
+                actualizarEstado(false);
+            }
+        }
+
+        // Función para mostrar contactos en la UI
+        function mostrarContactos() {
+            agendaList.innerHTML = "";
+
+            if (contactos.length === 0) {
+                emptyState.style.display = "block";
+                return;
+            }
+
+            emptyState.style.display = "none";
+
+            contactos.forEach((contacto) => {
+                const li = document.createElement("li");
+                li.className = "agenda-item";
+                
+                const fechaFormato = new Date(contacto.fecha).toLocaleDateString("es-ES", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                });
+
+                li.innerHTML = `
+                    <div class="contact-info">
+                        <div class="contact-name">${escaparHTML(contacto.nombre)}</div>
+                        <div class="contact-date">Agregado: ${fechaFormato}</div>
+                    </div>
+                    <button class="delete-btn" onclick="eliminarContacto('${contacto.id}')">
+                        Eliminar
+                    </button>
+                `;
+
+                agendaList.appendChild(li);
+            });
+        }
+
+        // Función para agregar contacto
+        window.agregarContacto = async function() {
+            const nombre = nombreInput.value.trim();
+
+            if (!nombre) {
+                alert("Por favor, ingresa un nombre");
+                nombreInput.focus();
+                return;
+            }
+
+            if (nombre.length < 2) {
+                alert("El nombre debe tener al menos 2 caracteres");
+                return;
+            }
+
+            agregarBtn.disabled = true;
+            agregarBtn.textContent = "Agregando...";
+
+            try {
+                await addDoc(agendaCollection, {
+                    nombre: nombre,
+                    fecha: serverTimestamp()
+                });
+
+                nombreInput.value = "";
+                nombreInput.focus();
+            } catch (error) {
+                console.error("Error al agregar contacto:", error);
+                alert("Error al agregar el contacto: " + error.message);
+            } finally {
+                agregarBtn.disabled = false;
+                agregarBtn.textContent = "Agregar";
+            }
+        };
+
+        // Función para eliminar contacto
+        window.eliminarContacto = async function(id) {
+            if (!confirm("¿Estás seguro de que deseas eliminar este contacto?")) {
+                return;
+            }
+
+            try {
+                const item = event.target.closest(".agenda-item");
+                item.classList.add("removing");
+
+                await deleteDoc(doc(db, "agenda", id));
+
+                setTimeout(() => {
+                    mostrarContactos();
+                }, 300);
+            } catch (error) {
+                console.error("Error al eliminar contacto:", error);
+                alert("Error al eliminar el contacto: " + error.message);
+                mostrarContactos();
+            }
+        };
+
+        // Función para escapar HTML y evitar XSS
+        function escaparHTML(texto) {
+            const map = {
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#039;"
+            };
+            return texto.replace(/[&<>"']/g, (m) => map[m]);
+        }
+
+        // Permitir agregar contacto con Enter
+        nombreInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") {
+                agregarContacto();
+            }
+        });
+
+        // Cargar contactos al iniciar
+        cargarContactos();
+    </script>
+</body>
+</html>
